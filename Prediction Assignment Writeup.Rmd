@@ -1,0 +1,128 @@
+---
+title: "Coursera PML - Assignment"
+author: "Woosung Ha"
+date: "2023-09-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Coursera Practical Machine Learning - Prediction Assignment
+
+This project consists of mainly two parts I. Training and corss-validating with training data II. Testing 20 different test cases with testing data
+
+## I. Training
+
+### 1. Remove environment and load essential library
+
+```{r}
+rm(list = ls())
+library(caret)
+library(ggplot2)
+library(dplyr)
+```
+
+### 2. Load and check data
+
+```{r}
+training_raw <- read.csv("pml-training.csv")
+testing_raw <- read.csv("pml-testing.csv")
+str(training_raw); str(testing_raw)
+#  NA, blank, and #DIV/0!; Make these NA
+training_raw <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+testing_raw <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+```
+
+### 3. Refine data
+
+```{r}
+training_raw_NA <- is.na(training_raw)
+# Calculate how many rows have NA per each column
+training_raw_NA <- apply(training_raw_NA, 2 , mean)
+hist(training_raw_NA)
+# Either < 0.2 or > 0.8, so take only < 0.2 columns (low portion of NA)
+training_raw_NA <- training_raw_NA < 0.2
+# Filter only valid columns
+training_raw_NA_filtered <- training_raw[,training_raw_NA]
+testing_raw_NA_filtered <- testing_raw[,training_raw_NA]
+dim(training_raw_NA_filtered)
+# Almost 20,000 rows -> only 10% will be taken for training to speed up the calculation
+```
+
+### 4. Create partition
+
+```{r}
+# create partition
+set.seed(123)
+inTrain <- createDataPartition(training_raw_NA_filtered$classe,
+                               p=0.1, list=FALSE)
+training <- training_raw_NA_filtered[inTrain,]
+testing <- training_raw_NA_filtered[-inTrain,]
+dim(training); dim(testing)
+```
+
+### 5. Remove nearly zero variance & columns of index, name, and time stamp
+
+#### These make training unexpectedly weird
+
+```{r}
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+testing <- testing[, -nzv]
+training <- training[, -c(1:5)]
+testing <- testing[, -c(1:5)]
+dim(training); dim(testing)
+```
+
+### 6. Training and prediction
+
+#### a. Decision tree
+
+```{r}
+library(rpart); library(rattle)
+set.seed(234)
+modFitDT <- train(classe ~ ., method = "rpart", data = training)
+fancyRpartPlot(modFitDT$finalModel)
+predDT <- predict(modFitDT, newdata=testing)
+confMatDT <- confusionMatrix(predDT, as.factor(testing$classe))
+confMatDT
+# Accuracy of 0.566 (Pretty low)
+```
+
+#### b. Random forest (skip)
+
+```{r}
+# Tried to run the following, but error occurred and still don't know why
+# Probably due to long calculation...
+
+# library(randomForest)
+# set.seed(345)
+# modFitRF <- train(classe ~ ., method = "rf", data = training, prox=TRUE)
+# predRF <- predict(modFitRF, newdata=testing)
+# confMatRF <- confusionMatrix(predRF, as.factor(testing$classe))
+# confMatRF
+```
+
+#### c. GBM
+
+```{r}
+set.seed(456)
+modFitGBM <- train(classe ~ ., method="gbm", data=training, verbose=FALSE)
+predGBM <- predict(modFitGBM, newdata=testing)
+confMatGBM <- confusionMatrix(predGBM, as.factor(testing$classe))
+confMatGBM
+# Accuracy of 0.9521 (Much higher than decition tree)
+```
+
+### 7. Training conclusion
+
+Decision tree showed very fast fitting but low accuracy. Failed to fit with random forest model. Therefore, I would choose GBM for its high accuracy of 0.9521.
+
+## II. Testing
+
+```{r}
+predtesting <- predict(modFitGBM, newdata=testing_raw)
+predtesting
+```
